@@ -1,0 +1,70 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyTorch / YOLO model weights (auto-downloaded by Ultralytics on first run)
+*.pt
+*.pth
+*.onnx
+*.engine
+*.bin
+
+# Video & CCTV media files
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# Generated snapshots & temporary images
+*.jpg
+*.jpeg
+*.png
+uploads/
+snapshots/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs & tasks
+*.log
+.system_generated/
+
+# Environments & Secret keys
+.env
+.env.local
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

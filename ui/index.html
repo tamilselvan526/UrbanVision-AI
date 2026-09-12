@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CRIMEWATCH-AI // SURVEILLANCE &amp; INTELLIGENCE TERMINAL</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Special+Elite&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/ui/style.css" />
+</head>
+<body>
+
+  <!-- ══ Header ══════════════════════════════════════════════════════════ -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">CrimeWatch-AI</div>
+      <div class="subtitle">Smart Crime Detection &amp; Movement Intelligence // v2.0</div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="tab-live">[F1] Live Feed</button>
+      <button class="tab-btn" data-tab="tab-watchlist">[F2] Person Watchlist</button>
+      <button class="tab-btn" data-tab="tab-vehicles">[F3] Plate &amp; Vehicle Search</button>
+    </nav>
+
+    <div class="header-right">
+      <div class="stat-box">
+        <span class="stat-label">FPS</span>
+        <span class="stat-value" id="fps-display">--</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Frames</span>
+        <span class="stat-value" id="frame-display">--</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Incidents</span>
+        <span class="stat-value alert-text" id="incident-count">0</span>
+      </div>
+      <div id="status-badge" class="status-badge offline">Offline</div>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 1: LIVE SURVEILLANCE FEED                                         -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <main id="tab-live" class="tab-content active main-grid">
+
+    <!-- ── Left: Video Feed ─────────────────────────────────────────────── -->
+    <section class="panel video-panel">
+      <div class="panel-header">
+        <span class="panel-title">// Live Tactical Video Feed</span>
+        <div class="overlay-toggles">
+          <label class="toggle-label"><input type="checkbox" id="tog-boxes" checked> Boxes</label>
+          <label class="toggle-label"><input type="checkbox" id="tog-trails" checked> Trails</label>
+          <label class="toggle-label"><input type="checkbox" id="tog-skeleton" checked> Skeleton</label>
+          <label class="toggle-label"><input type="checkbox" id="tog-threat" checked> Threat HUD</label>
+        </div>
+      </div>
+
+      <div class="video-container">
+        <canvas id="video-canvas"></canvas>
+        <div id="waiting-overlay" class="waiting-overlay">
+          <div class="waiting-icon">[ ]</div>
+          <div>No Signal</div>
+          <div class="waiting-sub">Select source and press ENGAGE</div>
+        </div>
+        <div id="alert-flash" class="alert-flash hidden">// THREAT DETECTED //</div>
+      </div>
+
+      <!-- Controls Bar -->
+      <div class="controls-bar">
+        <div class="source-group">
+          <label class="ctrl-label">Source</label>
+          <select id="source-select" class="ctrl-input">
+            <option value="0">Camera 01 (Webcam)</option>
+            <option value="uploaded">File Upload</option>
+            <option value="rtsp">RTSP / IP Camera</option>
+          </select>
+          <input type="text" id="rtsp-input" class="ctrl-input hidden" placeholder="rtsp://192.168.x.x:554/stream" />
+          <input type="file" id="file-input" class="ctrl-input hidden" accept="video/*" />
+        </div>
+        <div class="btn-group">
+          <button id="btn-start" class="btn btn-start">&gt; ENGAGE</button>
+          <button id="btn-stop" class="btn btn-stop" disabled>&gt; HALT</button>
+          <button id="btn-download" class="btn btn-dl" disabled>&gt; EXPORT</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Right Panel ───────────────────────────────────────────────────── -->
+    <aside class="right-panel">
+
+      <!-- Threat Meter -->
+      <div class="panel threat-meter-panel">
+        <div class="panel-header"><span class="panel-title">// Threat Assessment</span></div>
+        <div class="threat-meter-wrap">
+          <div class="threat-arc-container">
+            <svg viewBox="0 0 200 110" class="threat-arc-svg">
+              <path d="M 20 100 A 80 80 0 0 1 180 100" stroke="#1a1910" stroke-width="16" fill="none"/>
+              <path id="threat-arc-fill" d="M 20 100 A 80 80 0 0 1 180 100"
+                stroke="#4a7a3a" stroke-width="16" fill="none"
+                stroke-dasharray="251" stroke-dashoffset="251"
+                stroke-linecap="butt"/>
+              <text x="100" y="88" text-anchor="middle" class="arc-score" id="arc-score-text">0</text>
+              <text x="100" y="106" text-anchor="middle" class="arc-label">Threat Score</text>
+            </svg>
+          </div>
+          <div id="threat-level-label" class="threat-level-label level-none">Clear</div>
+        </div>
+      </div>
+
+      <!-- Algorithm Status -->
+      <div class="panel algo-panel">
+        <div class="panel-header"><span class="panel-title">// Architecture Status</span></div>
+        <div class="algo-list">
+          <div class="algo-item" id="alg1">
+            <div class="algo-dot dot-idle"></div>
+            <div class="algo-info">
+              <div class="algo-name">Alg-1: YOLOv8 Detect</div>
+              <div class="algo-desc">Weapon, Person &amp; Vehicle</div>
+            </div>
+            <div class="algo-count" id="alg1-count">0</div>
+          </div>
+          <div class="algo-item" id="alg2">
+            <div class="algo-dot dot-idle"></div>
+            <div class="algo-info">
+              <div class="algo-name">Alg-2: ByteTrack</div>
+              <div class="algo-desc">Multi-Object Trajectories</div>
+            </div>
+            <div class="algo-count" id="alg2-count">0</div>
+          </div>
+          <div class="algo-item" id="alg3">
+            <div class="algo-dot dot-idle"></div>
+            <div class="algo-info">
+              <div class="algo-name">Alg-3: Pose &amp; Kinematics</div>
+              <div class="algo-desc">Strike, Stab &amp; Stare Velocity</div>
+            </div>
+            <div class="algo-count" id="alg3-count">0</div>
+          </div>
+          <div class="algo-item" id="alg4">
+            <div class="algo-dot dot-idle"></div>
+            <div class="algo-info">
+              <div class="algo-name">Alg-4: Spatio-Temporal AI</div>
+              <div class="algo-desc">Assault &amp; Threat Reasoning</div>
+            </div>
+            <div class="algo-count" id="alg4-count">0</div>
+          </div>
+          <div class="algo-item" id="alg-reid">
+            <div class="algo-dot dot-idle"></div>
+            <div class="algo-info">
+              <div class="algo-name">Intel: Person Re-ID</div>
+              <div class="algo-desc">Visual Watchlist Matching</div>
+            </div>
+            <div class="algo-count" id="alg-reid-count">0</div>
+          </div>
+          <div class="algo-item" id="alg-alpr">
+            <div class="algo-dot dot-idle"></div>
+            <div class="algo-info">
+              <div class="algo-name">Intel: Tesseract ANPR</div>
+              <div class="algo-desc">Plate Recognition &amp; Trail</div>
+            </div>
+            <div class="algo-count" id="alg-alpr-count">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Incident Feed -->
+      <div class="panel incident-panel">
+        <div class="panel-header">
+          <span class="panel-title">// Incident Log</span>
+          <button class="btn-clear" onclick="clearIncidents()">Clear</button>
+        </div>
+        <div id="incident-list" class="incident-list">
+          <div class="no-incidents">No incidents on record.</div>
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 2: PERSON WATCHLIST & RE-ID                                       -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <main id="tab-watchlist" class="tab-content intelligence-grid">
+    
+    <!-- Enrollment Form -->
+    <section class="panel">
+      <div class="panel-header">
+        <span class="panel-title">// Enroll Target Person of Interest</span>
+      </div>
+      <div class="form-container">
+        <form id="form-enroll" class="retro-form">
+          <div class="form-group">
+            <label class="ctrl-label">Target Name / Alias</label>
+            <input type="text" id="target-name" class="ctrl-input w-full" placeholder="e.g. John Doe / Suspect Alpha" required />
+          </div>
+          <div class="form-group">
+            <label class="ctrl-label">Intelligence Notes / Case ID</label>
+            <textarea id="target-notes" class="ctrl-input w-full" rows="3" placeholder="Case #4092, Wanted for altercation..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="ctrl-label">Reference Photograph</label>
+            <input type="file" id="target-photo" class="ctrl-input w-full" accept="image/*" required />
+            <div id="target-preview-wrap" class="preview-wrap hidden">
+              <img id="target-preview" class="preview-img" alt="Preview" />
+            </div>
+          </div>
+          <button type="submit" id="btn-enroll" class="btn btn-start">&gt; ENROLL INTO MEMORY</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- Enrolled Watchlist Gallery -->
+    <section class="panel">
+      <div class="panel-header">
+        <span class="panel-title">// Enrolled Watchlist Targets</span>
+        <button class="btn-clear" onclick="loadWatchlist()">Refresh</button>
+      </div>
+      <div id="watchlist-gallery" class="gallery-container">
+        <div class="no-incidents">Loading watchlist...</div>
+      </div>
+    </section>
+
+    <!-- Sightings Feed -->
+    <section class="panel">
+      <div class="panel-header">
+        <span class="panel-title">// Target Sightings &amp; Movement Timeline</span>
+        <button class="btn-clear" onclick="loadRecentSightings()">Refresh</button>
+      </div>
+      <div id="sightings-list" class="incident-list">
+        <div class="no-incidents">No target sightings recorded yet.</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 3: VEHICLE & LICENSE PLATE SEARCH (ANPR)                         -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <main id="tab-vehicles" class="tab-content vehicle-grid">
+    
+    <!-- Search Bar -->
+    <section class="panel search-bar-panel">
+      <div class="panel-header">
+        <span class="panel-title">// ANPR Plate &amp; Movement Query Engine</span>
+      </div>
+      <div class="search-form-row">
+        <input type="text" id="plate-search-input" class="ctrl-input search-input" placeholder="ENTER PLATE NUMBER (e.g. MH02, DL, 4092)..." />
+        <button id="btn-search-plate" class="btn btn-start">&gt; SEARCH REGISTRY</button>
+        <button id="btn-refresh-vehicles" class="btn btn-dl">&gt; ALL PASSES</button>
+      </div>
+    </section>
+
+    <!-- Search Results / Vehicle Passes -->
+    <section class="panel vehicle-results-panel">
+      <div class="panel-header">
+        <span class="panel-title" id="vehicle-results-title">// Registered Vehicle Passes</span>
+        <span class="panel-title" id="vehicle-count-badge">0 VEHICLES</span>
+      </div>
+      <div id="vehicle-cards-container" class="vehicle-cards-container">
+        <div class="no-incidents">No vehicle passes recorded. Start stream with cars or bikes to log plates.</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══ Legend Bar ═══════════════════════════════════════════════════════ -->
+  <footer class="legend-bar">
+    <div class="legend-item"><span class="legend-dot" style="background:#7a8a50"></span>Person</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#c83232"></span>Watchlist Target</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#32a0c8"></span>Vehicle &amp; Plate</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#8a6a20"></span>Motion Trail</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#6a1a0a"></span>Weapon</div>
+    <div class="legend-item ml-auto">RTX 4050 // Tesseract OCR 5.5 // Person Re-ID // Ultralytics 8.4</div>
+  </footer>
+
+  <script src="/ui/app.js"></script>
+</body>
+</html>
