@@ -38,6 +38,11 @@ class Detection:
     is_vehicle: bool = False
     target_match_name: Optional[str] = None  # Watchlist Person Re-ID match
     target_match_conf: float = 0.0
+    regular_id: Optional[int] = None         # Street Regular profile ID
+    regular_alias: Optional[str] = None      # Street Regular alias
+    regular_name: Optional[str] = None       # Street Regular custom name
+    regular_role: Optional[str] = None       # Street Regular role (e.g. STREET_VENDOR)
+    regular_conf: float = 0.0
     timestamp: float = field(default_factory=time.time)
 
     def __post_init__(self):
@@ -263,6 +268,11 @@ class WeaponDetector:
             if det.target_match_name:
                 color = (20, 20, 220)  # Intense alert red
                 label = f"TARGET: {det.target_match_name.upper()} [{det.target_match_conf:.0%}]"
+            elif det.regular_alias:
+                color = (0, 180, 240)  # Warm Gold / Amber badge for Street Regular
+                display = det.regular_name if det.regular_name else det.regular_alias
+                role = f" ({det.regular_role})" if det.regular_role and det.regular_role != "UNKNOWN" else ""
+                label = f"REGULAR: {display}{role}"
             elif det.is_weapon:
                 color = COLOR_WEAPON
                 label = f"{det.class_name.upper()} [{det.confidence:.0%}]"

@@ -23,6 +23,7 @@ SNAPSHOTS_DIR = Path(__file__).parent.parent / "snapshots"
 SNAPSHOTS_DIR.mkdir(exist_ok=True)
 (SNAPSHOTS_DIR / "persons").mkdir(exist_ok=True)
 (SNAPSHOTS_DIR / "vehicles").mkdir(exist_ok=True)
+(SNAPSHOTS_DIR / "regulars").mkdir(exist_ok=True)
 
 
 class IntelligenceDB:
@@ -88,9 +89,34 @@ class IntelligenceDB:
                 )
             """)
 
+            # 4. Street Regulars (Recurring Entities & Roles)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS street_regulars (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    alias TEXT NOT NULL UNIQUE,
+                    custom_name TEXT DEFAULT '',
+                    detected_role TEXT DEFAULT 'UNKNOWN',
+                    role_confidence REAL DEFAULT 0.0,
+                    days_seen_count INTEGER DEFAULT 1,
+                    total_appearances INTEGER DEFAULT 1,
+                    total_dwell_seconds REAL DEFAULT 0.0,
+                    anchor_x INTEGER DEFAULT 0,
+                    anchor_y INTEGER DEFAULT 0,
+                    active_hours_json TEXT DEFAULT '[]',
+                    first_seen REAL NOT NULL,
+                    last_seen REAL NOT NULL,
+                    first_seen_str TEXT NOT NULL,
+                    last_seen_str TEXT NOT NULL,
+                    snapshot_filename TEXT DEFAULT '',
+                    embedding BLOB NOT NULL
+                )
+            """)
+
             # Create indices for fast searches
             cur.execute("CREATE INDEX IF NOT EXISTS idx_sightings_name ON person_sightings(person_name)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_vehicle_plate ON vehicle_records(plate_number)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_regular_alias ON street_regulars(alias)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_regular_role ON street_regulars(detected_role)")
             conn.commit()
             logger.info(f"[IntelligenceDB] Initialized database at {self.db_path}")
 
@@ -269,6 +295,177 @@ class IntelligenceDB:
                 except Exception:
                     r["trajectory"] = []
             return rows
+
+    # ── Street Regulars Methods ────────────────────────────────────────────
+
+    def add_or_update_regular(
+        self,
+        alias: str,
+        embedding: np.ndarray,
+        detected_role: str = "UNKNOWN",
+        role_confidence: float = 0.0,
+        dwell_delta: float = 0.0,
+        anchor: Tuple[int, int] = (0, 0),
+        active_hour: Optional[int] = None,
+        snapshot_filename: Optional[str] = None,
+        custom_name: Optional[str] = None,
+    ) -> int:
+        """Add a new street regular or update existing regular's stats and moving average embedding."""
+        now = time.time()
+        now_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now))
+        emb_blob = embedding.astype(np.float32).tobytes()
+
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM street_regulars WHERE alias = ?", (alias,))
+            existing = cur.fetchone()
+
+            if existing:
+                # Parse active hours
+                try:
+                    active_hours = json.loads(existing["active_hours_json"] or "[]")
+                except Exception:
+                    active_hours = []
+                if active_hour is not None and active_hour not in active_hours:
+                    active_hours.append(active_hour)
+                    active_hours.sort()
+
+                # Moving average embedding update: new_emb = 0.8 * old + 0.2 * new
+                old_emb = np.frombuffer(existing["embedding"], dtype=np.float32)
+                updated_emb = 0.8 * old_emb + 0.2 * embedding.astype(np.float32)
+                norm = np.linalg.norm(updated_emb)
+                if norm > 1e-6:
+                    updated_emb /= norm
+                updated_blob = updated_emb.astype(np.float32).tobytes()
+
+                # Check if calendar day differs for days_seen_count
+                old_last_seen = existing["last_seen"]
+                old_day = time.strftime("%Y-%m-%d", time.localtime(old_last_seen))
+                curr_day = time.strftime("%Y-%m-%d", time.localtime(now))
+                day_increment = 1 if curr_day != old_day else 0
+
+                snap = snapshot_filename or existing["snapshot_filename"]
+                c_name = custom_name if custom_name is not None else existing["custom_name"]
+
+                # Anchor point moving average
+                new_anchor_x = int(0.7 * existing["anchor_x"] + 0.3 * anchor[0]) if existing["anchor_x"] > 0 else anchor[0]
+                new_anchor_y = int(0.7 * existing["anchor_y"] + 0.3 * anchor[1]) if existing["anchor_y"] > 0 else anchor[1]
+
+                cur.execute("""
+                    UPDATE street_regulars
+                    SET custom_name = ?, detected_role = ?, role_confidence = ?,
+                        days_seen_count = days_seen_count + ?,
+                        total_appearances = total_appearances + 1,
+                        total_dwell_seconds = total_dwell_seconds + ?,
+                        anchor_x = ?, anchor_y = ?,
+                        active_hours_json = ?,
+                        last_seen = ?, last_seen_str = ?,
+                        snapshot_filename = ?, embedding = ?
+                    WHERE id = ?
+                """, (
+                    c_name, detected_role, role_confidence,
+                    day_increment, dwell_delta,
+                    new_anchor_x, new_anchor_y,
+                    json.dumps(active_hours),
+                    now, now_str, snap, updated_blob, existing["id"]
+                ))
+                conn.commit()
+                return existing["id"]
+            else:
+                active_hours = [active_hour] if active_hour is not None else []
+                cur.execute("""
+                    INSERT INTO street_regulars
+                    (alias, custom_name, detected_role, role_confidence, days_seen_count,
+                     total_appearances, total_dwell_seconds, anchor_x, anchor_y,
+                     active_hours_json, first_seen, last_seen, first_seen_str, last_seen_str,
+                     snapshot_filename, embedding)
+                    VALUES (?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    alias, custom_name or "", detected_role, role_confidence,
+                    dwell_delta, anchor[0], anchor[1],
+                    json.dumps(active_hours), now, now, now_str, now_str,
+                    snapshot_filename or "", emb_blob
+                ))
+                conn.commit()
+                return cur.lastrowid
+
+    def get_all_regulars(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Fetch all discovered regulars."""
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, alias, custom_name, detected_role, role_confidence,
+                       days_seen_count, total_appearances, total_dwell_seconds,
+                       anchor_x, anchor_y, active_hours_json,
+                       first_seen, last_seen, first_seen_str, last_seen_str,
+                       snapshot_filename
+                FROM street_regulars
+                ORDER BY total_appearances DESC, last_seen DESC
+                LIMIT ?
+            """, (limit,))
+            rows = [dict(r) for r in cur.fetchall()]
+            for r in rows:
+                try:
+                    r["active_hours"] = json.loads(r.get("active_hours_json", "[]"))
+                except Exception:
+                    r["active_hours"] = []
+            return rows
+
+    def get_regular_by_id(self, regular_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch regular by ID."""
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, alias, custom_name, detected_role, role_confidence,
+                       days_seen_count, total_appearances, total_dwell_seconds,
+                       anchor_x, anchor_y, active_hours_json,
+                       first_seen, last_seen, first_seen_str, last_seen_str,
+                       snapshot_filename
+                FROM street_regulars WHERE id = ?
+            """, (regular_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            try:
+                res["active_hours"] = json.loads(res.get("active_hours_json", "[]"))
+            except Exception:
+                res["active_hours"] = []
+            return res
+
+    def update_regular_custom_name(self, regular_id: int, custom_name: str) -> bool:
+        """Update user-assigned name for a regular."""
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE street_regulars SET custom_name = ? WHERE id = ?", (custom_name.strip(), regular_id))
+            conn.commit()
+            return cur.rowcount > 0
+
+    def delete_regular(self, regular_id: int) -> bool:
+        """Delete regular by ID."""
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM street_regulars WHERE id = ?", (regular_id,))
+            conn.commit()
+            return cur.rowcount > 0
+
+    def load_all_regular_embeddings(self) -> List[Dict[str, Any]]:
+        """Load all regular embeddings into memory for fast cosine similarity matching."""
+        with self._get_conn() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id, alias, custom_name, detected_role, role_confidence, embedding FROM street_regulars")
+            records = []
+            for r in cur.fetchall():
+                emb = np.frombuffer(r["embedding"], dtype=np.float32)
+                records.append({
+                    "id": r["id"],
+                    "alias": r["alias"],
+                    "custom_name": r["custom_name"],
+                    "detected_role": r["detected_role"],
+                    "role_confidence": r["role_confidence"],
+                    "embedding": emb,
+                })
+            return records
 
 
 # Global singleton instance

@@ -22,6 +22,7 @@
       <button class="tab-btn active" data-tab="tab-live">[F1] Live Feed</button>
       <button class="tab-btn" data-tab="tab-watchlist">[F2] Person Watchlist</button>
       <button class="tab-btn" data-tab="tab-vehicles">[F3] Plate &amp; Vehicle Search</button>
+      <button class="tab-btn" data-tab="tab-regulars">[F4] Street Regulars &amp; Jobs</button>
     </nav>
 
     <div class="header-right">
@@ -265,14 +266,63 @@
 
   </main>
 
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 4: STREET REGULARS & JOBS (CROWDED STREET AI)                     -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <main id="tab-regulars" class="tab-content regulars-grid">
+    
+    <!-- Top Summary Banner -->
+    <section class="panel regulars-summary-panel">
+      <div class="panel-header">
+        <span class="panel-title">// Automated Street Regulars Discovery &amp; Activity Profiling</span>
+        <button class="btn-clear" onclick="loadStreetRegulars()">Refresh Profiles</button>
+      </div>
+      <div class="regulars-summary-content">
+        <div class="summary-metric">
+          <span class="metric-label">TOTAL PROFILES</span>
+          <span class="metric-val" id="reg-total-count">0</span>
+        </div>
+        <div class="summary-metric">
+          <span class="metric-label">STREET VENDORS</span>
+          <span class="metric-val text-gold" id="reg-vendor-count">0</span>
+        </div>
+        <div class="summary-metric">
+          <span class="metric-label">SHOPKEEPERS</span>
+          <span class="metric-val text-green" id="reg-shop-count">0</span>
+        </div>
+        <div class="summary-metric">
+          <span class="metric-label">DELIVERY &amp; COMMUTERS</span>
+          <span class="metric-val text-cyan" id="reg-transit-count">0</span>
+        </div>
+        <div class="summary-metric">
+          <span class="metric-label">SUSPICIOUS LOITERERS</span>
+          <span class="metric-val text-red" id="reg-loiter-count">0</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Discovered Regular Profiles Gallery -->
+    <section class="panel regulars-results-panel">
+      <div class="panel-header">
+        <span class="panel-title">// Discovered Street Regulars Gallery</span>
+        <span class="panel-title" id="regulars-count-badge">0 REGULARS DETECTED</span>
+      </div>
+      <div id="regulars-cards-container" class="regulars-cards-container">
+        <div class="no-incidents">No street regular profiles discovered yet. Run surveillance feed to automatically discover recurring vendors, workers, and commuters.</div>
+      </div>
+    </section>
+
+  </main>
+
   <!-- ══ Legend Bar ═══════════════════════════════════════════════════════ -->
   <footer class="legend-bar">
     <div class="legend-item"><span class="legend-dot" style="background:#7a8a50"></span>Person</div>
     <div class="legend-item"><span class="legend-dot" style="background:#c83232"></span>Watchlist Target</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#f0a500"></span>Street Regular</div>
     <div class="legend-item"><span class="legend-dot" style="background:#32a0c8"></span>Vehicle &amp; Plate</div>
     <div class="legend-item"><span class="legend-dot" style="background:#8a6a20"></span>Motion Trail</div>
     <div class="legend-item"><span class="legend-dot" style="background:#6a1a0a"></span>Weapon</div>
-    <div class="legend-item ml-auto">RTX 4050 // Tesseract OCR 5.5 // Person Re-ID // Ultralytics 8.4</div>
+    <div class="legend-item ml-auto">RTX 4050 // Street Profiler // Person Re-ID // Tesseract ANPR</div>
   </footer>
 
   <script src="/ui/app.js"></script>

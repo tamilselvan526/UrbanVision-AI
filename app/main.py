@@ -38,6 +38,7 @@ from loguru import logger
 from engine.pipeline import CrimeDetectionPipeline, PipelineConfig
 from engine.intelligence_db import intelligence_db, SNAPSHOTS_DIR
 from engine.person_reid import person_reid
+from engine.street_entity_profiler import street_entity_profiler
 from app.streamer import VideoStreamer
 from app.schemas import IncidentAlert, StreamStatus
 
@@ -372,6 +373,37 @@ async def get_recent_vehicles():
     for v in vehicles:
         v["snapshot_url"] = f"/snapshots/vehicles/{v['snapshot_filename']}" if v.get("snapshot_filename") else ""
     return {"vehicles": vehicles}
+
+
+# ── Street Regulars & Routine Profiling Endpoints ─────────────────────────
+
+@app.get("/api/regulars/list")
+async def get_street_regulars():
+    """Retrieve all discovered street regulars with detected roles and statistics."""
+    regulars = intelligence_db.get_all_regulars(100)
+    for r in regulars:
+        r["snapshot_url"] = f"/snapshots/regulars/{r['snapshot_filename']}" if r.get("snapshot_filename") else ""
+    return {"regulars": regulars}
+
+
+@app.post("/api/regulars/{regular_id}/rename")
+async def rename_street_regular(regular_id: int, custom_name: str = Form(...)):
+    """Assign or edit a custom identifier name for a street regular (e.g. 'Ramesh Chaiwala')."""
+    success = intelligence_db.update_regular_custom_name(regular_id, custom_name)
+    if success:
+        street_entity_profiler.reload_regulars_from_db()
+        return {"status": "success", "regular_id": regular_id, "custom_name": custom_name}
+    raise HTTPException(404, "Street regular not found")
+
+
+@app.delete("/api/regulars/{regular_id}")
+async def delete_street_regular(regular_id: int):
+    """Remove a regular profile from database."""
+    success = intelligence_db.delete_regular(regular_id)
+    if success:
+        street_entity_profiler.reload_regulars_from_db()
+        return {"status": "deleted"}
+    raise HTTPException(404, "Street regular not found")
 
 
 # ── Entry point (when called directly) ────────────────────────────────────

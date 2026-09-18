@@ -338,8 +338,17 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
       loadRecentSightings();
     } else if (targetId === "tab-vehicles") {
       loadRecentVehicles();
+    } else if (targetId === "tab-regulars") {
+      loadStreetRegulars();
     }
   });
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "F1") { e.preventDefault(); document.querySelector('[data-tab="tab-live"]')?.click(); }
+  if (e.key === "F2") { e.preventDefault(); document.querySelector('[data-tab="tab-watchlist"]')?.click(); }
+  if (e.key === "F3") { e.preventDefault(); document.querySelector('[data-tab="tab-vehicles"]')?.click(); }
+  if (e.key === "F4") { e.preventDefault(); document.querySelector('[data-tab="tab-regulars"]')?.click(); }
 });
 
 /* ══════════════════════════════════════════════════════════════════════ */
@@ -568,4 +577,143 @@ function renderVehicleCards(vehicles) {
     `;
   }).join("");
 }
+
+/* ══════════════════════════════════════════════════════════════════════ */
+/* TAB 4: STREET REGULARS & JOBS (CROWDED STREET AI)                     */
+/* ══════════════════════════════════════════════════════════════════════ */
+const regularsCardsContainer = document.getElementById("regulars-cards-container");
+const regularsCountBadge = document.getElementById("regulars-count-badge");
+const regTotalCount = document.getElementById("reg-total-count");
+const regVendorCount = document.getElementById("reg-vendor-count");
+const regShopCount = document.getElementById("reg-shop-count");
+const regTransitCount = document.getElementById("reg-transit-count");
+const regLoiterCount = document.getElementById("reg-loiter-count");
+
+async function loadStreetRegulars() {
+  if (!regularsCardsContainer) return;
+  regularsCardsContainer.innerHTML = '<div class="no-incidents">Loading street regular profiles...</div>';
+
+  try {
+    const resp = await fetch("/api/regulars/list");
+    const data = await resp.json();
+    const regulars = data.regulars || [];
+    renderRegularCards(regulars);
+  } catch (err) {
+    regularsCardsContainer.innerHTML = `<div class="no-incidents">Failed loading regular profiles: ${err}</div>`;
+  }
+}
+
+function renderRegularCards(regulars) {
+  if (!regularsCardsContainer) return;
+
+  // Update metrics
+  if (regTotalCount) regTotalCount.textContent = regulars.length;
+  if (regularsCountBadge) regularsCountBadge.textContent = `${regulars.length} REGULARS DETECTED`;
+
+  let vendors = 0, shops = 0, transit = 0, loiter = 0;
+  regulars.forEach(r => {
+    const role = (r.detected_role || "").toUpperCase();
+    if (role === "STREET_VENDOR") vendors++;
+    else if (role === "SHOPKEEPER") shops++;
+    else if (role === "COMMUTER" || role === "DELIVERY_WORKER") transit++;
+    else if (role === "SUSPICIOUS_LOITERER") loiter++;
+  });
+
+  if (regVendorCount) regVendorCount.textContent = vendors;
+  if (regShopCount) regShopCount.textContent = shops;
+  if (regTransitCount) regTransitCount.textContent = transit;
+  if (regLoiterCount) regLoiterCount.textContent = loiter;
+
+  if (regulars.length === 0) {
+    regularsCardsContainer.innerHTML = '<div class="no-incidents">No street regular profiles discovered yet. Run surveillance feed with street video to discover vendors, workers, and regulars.</div>';
+    return;
+  }
+
+  regularsCardsContainer.innerHTML = regulars.map(r => {
+    const role = (r.detected_role || "UNKNOWN").toLowerCase();
+    let badgeClass = "badge-vendor";
+    if (role === "shopkeeper") badgeClass = "badge-shop";
+    else if (role === "commuter" || role === "delivery_worker") badgeClass = "badge-transit";
+    else if (role === "suspicious_loiterer") badgeClass = "badge-loiter";
+
+    const displayName = r.custom_name ? r.custom_name : r.alias;
+    const hoursStr = (r.active_hours && r.active_hours.length > 0)
+      ? r.active_hours.map(h => `${h}:00`).join(", ")
+      : "Throughout Day";
+
+    return `
+      <div class="regular-card role-${role}">
+        <div class="reg-card-top">
+          ${r.snapshot_url 
+            ? `<img src="${r.snapshot_url}" class="reg-thumb" alt="${r.alias}" onerror="this.style.display='none'" />` 
+            : `<div class="reg-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:0.6rem;">NO PHOTO</div>`
+          }
+          <div class="reg-info">
+            <div class="reg-alias">// ID: ${r.alias}</div>
+            <div class="reg-name" title="${displayName}">${displayName}</div>
+            <div class="reg-role-badge ${badgeClass}">${r.detected_role} (${Math.round(r.role_confidence * 100)}%)</div>
+            
+            <div class="reg-stats">
+              <div><b>Days Seen:</b> ${r.days_seen_count} day(s)</div>
+              <div><b>Appearances:</b> ${r.total_appearances} session(s)</div>
+              <div><b>Total Dwell:</b> ${Math.round(r.total_dwell_seconds)} sec</div>
+              <div><b>Active Hours:</b> ${hoursStr}</div>
+              <div><b>Anchor Pos:</b> (${r.anchor_x}, ${r.anchor_y})</div>
+              <div><b>First Seen:</b> ${r.first_seen_str}</div>
+              <div><b>Last Seen:</b> ${r.last_seen_str}</div>
+            </div>
+
+            <div class="reg-actions">
+              <button class="btn-reg-action" onclick="renameRegularPrompt(${r.id}, '${escapeQuote(displayName)}')">&gt; RENAME</button>
+              <button class="btn-reg-action btn-reg-del" onclick="deleteRegularConfirm(${r.id})">&gt; REMOVE</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function escapeQuote(str) {
+  return (str || "").replace(/'/g, "\\'");
+}
+
+async function renameRegularPrompt(id, currentName) {
+  const newName = prompt("Enter custom name/job title for this street regular (e.g. Ramesh Chaiwala, Fruit Cart Uncle):", currentName);
+  if (newName === null || !newName.trim()) return;
+  
+  const formData = new FormData();
+  formData.append("custom_name", newName.trim());
+
+  try {
+    const resp = await fetch(`/api/regulars/${id}/rename`, {
+      method: "POST",
+      body: formData,
+    });
+    if (resp.ok) {
+      showToast(`Renamed regular to '${newName}'`);
+      loadStreetRegulars();
+    } else {
+      alert("Failed to rename regular");
+    }
+  } catch (err) {
+    alert(`Error: ${err}`);
+  }
+}
+
+async function deleteRegularConfirm(id) {
+  if (!confirm("Are you sure you want to remove this street regular profile?")) return;
+  try {
+    const resp = await fetch(`/api/regulars/${id}`, { method: "DELETE" });
+    if (resp.ok) {
+      showToast("Regular profile removed");
+      loadStreetRegulars();
+    } else {
+      alert("Failed to delete regular profile");
+    }
+  } catch (err) {
+    alert(`Error: ${err}`);
+  }
+}
+
 

@@ -41,16 +41,17 @@ class PersonReIDEngine:
         self._gallery = intelligence_db.get_all_embeddings()
         logger.info(f"[PersonReID] Loaded {len(self._gallery)} target person(s) into memory watchlist.")
 
-    def extract_embedding(self, image_bgr: np.ndarray) -> np.ndarray:
+    def extract_embedding(self, image_bgr: np.ndarray, crowd_mode: bool = True) -> np.ndarray:
         """
         Compute a robust, normalized multi-feature visual descriptor for an image/crop.
         Combines:
           1. Color appearance: 3-region (Upper, Mid, Lower) HSV 3D histogram (captures clothing/skin color)
           2. Texture/Structure: Multi-scale Grayscale Gradient Histogram (captures silhouette and clothing pattern)
-          3. Aspect & Luminance invariant spatial representation.
+          3. Crowd Occlusion Weighting: When crowd_mode=True, weights upper torso and head much higher (45% / 45% / 10%)
+             to withstand severe lower-body occlusions typical in crowded streets/markets.
         """
         if image_bgr is None or image_bgr.size == 0:
-            return np.zeros(384, dtype=np.float32)
+            return np.zeros(392, dtype=np.float32)
 
         # Resize to standardized aspect ratio for Re-ID (128x256)
         img = cv2.resize(image_bgr, (128, 256), interpolation=cv2.INTER_AREA)
@@ -65,12 +66,14 @@ class PersonReIDEngine:
             hsv[int(h * 0.65):h, :],
         ]
 
+        region_weights = [0.45, 0.45, 0.10] if crowd_mode else [0.333, 0.333, 0.333]
+
         feature_parts = []
-        for reg in regions:
+        for reg, w_factor in zip(regions, region_weights):
             # 8 H bins, 4 S bins, 4 V bins = 128 elements per region
             hist = cv2.calcHist([reg], [0, 1, 2], None, [8, 4, 4], [0, 180, 0, 256, 0, 256])
             cv2.normalize(hist, hist)
-            feature_parts.append(hist.flatten())
+            feature_parts.append(hist.flatten() * w_factor)
 
         # Structural gradient descriptor (HOG-like edge magnitude & angle across 4x8 blocks)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -85,7 +88,7 @@ class PersonReIDEngine:
         norm = np.linalg.norm(struct_hist)
         if norm > 1e-6:
             struct_hist /= norm
-        feature_parts.append(struct_hist)
+        feature_parts.append(struct_hist * (0.25 if crowd_mode else 0.333))
 
         # Concatenate and L2-normalize
         full_vec = np.concatenate(feature_parts).astype(np.float32)

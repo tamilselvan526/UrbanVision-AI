@@ -816,3 +816,175 @@ body::after {
   font-family: var(--font-mono);
 }
 
+/* ══ TAB 4: STREET REGULARS & JOBS (CROWDED STREET AI) ══════════════ */
+.regulars-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.regulars-summary-panel {
+  flex-shrink: 0;
+}
+
+.regulars-summary-content {
+  display: flex;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  flex-wrap: wrap;
+}
+
+.summary-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.metric-label {
+  font-size: 0.58rem;
+  color: var(--text-dim);
+  letter-spacing: 0.12em;
+}
+
+.metric-val {
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--amber-bright);
+}
+
+.text-gold { color: #f0a500 !important; }
+.text-green { color: #70c060 !important; }
+.text-cyan { color: #00e0e0 !important; }
+.text-red { color: #f04040 !important; }
+
+.regulars-results-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.regulars-cards-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.regular-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid #f0a500;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+.regular-card.role-street_vendor { border-left-color: #f0a500; }
+.regular-card.role-shopkeeper { border-left-color: #70c060; }
+.regular-card.role-commuter { border-left-color: #00e0e0; }
+.regular-card.role-delivery_worker { border-left-color: #38bdf8; }
+.regular-card.role-suspicious_loiterer { border-left-color: #f04040; }
+
+.reg-card-top {
+  display: flex;
+  gap: 12px;
+}
+
+.reg-thumb {
+  width: 90px;
+  height: 120px;
+  object-fit: cover;
+  background: #000;
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.reg-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.reg-alias {
+  font-size: 0.72rem;
+  color: var(--tan-dim);
+  letter-spacing: 0.1em;
+}
+
+.reg-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--amber-bright);
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reg-role-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: #2b1f00;
+  color: #f0a500;
+  border: 1px solid #7c5800;
+  width: fit-content;
+}
+
+.reg-role-badge.badge-vendor { background: #2b1f00; color: #f0a500; border-color: #7c5800; }
+.reg-role-badge.badge-shop { background: #0c260f; color: #70c060; border-color: #1a6023; }
+.reg-role-badge.badge-transit { background: #052026; color: #00e0e0; border-color: #125565; }
+.reg-role-badge.badge-loiter { background: #2e0808; color: #f04040; border-color: #781a1a; }
+
+.reg-stats {
+  font-size: 0.65rem;
+  color: var(--tan-light);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.reg-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.btn-reg-action {
+  font-size: 0.60rem;
+  padding: 3px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--tan-light);
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.btn-reg-action:hover {
+  border-color: var(--amber-mid);
+  color: var(--amber-bright);
+}
+
+.btn-reg-del:hover {
+  border-color: var(--threat-high);
+  color: var(--threat-high);
+}
+
+
