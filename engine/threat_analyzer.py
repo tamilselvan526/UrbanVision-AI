@@ -155,9 +155,13 @@ class ThreatAnalyzer:
             if best_tid >= 0:
                 weapon_assignments[best_tid] = wpn
 
-        # Score each person
+        # Score each person (suppress false alerts on display mannequins/dummies)
         frame_events: List[ThreatEvent] = []
+        living_persons = [p for p in persons if not getattr(p, "is_mannequin", False)]
         for person in persons:
+            if getattr(person, "is_mannequin", False):
+                continue
+
             tid = person.track_id
             if tid not in self._person_states:
                 self._person_states[tid] = PersonThreatState(track_id=tid)
@@ -169,7 +173,7 @@ class ThreatAnalyzer:
 
             score, tags = self._compute_threat_score(
                 person=person, track=track, pose=pose,
-                weapon=weapon, all_persons=persons,
+                weapon=weapon, all_persons=living_persons,
                 tracks=tracks, pose_map=pose_map,
             )
 

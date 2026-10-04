@@ -1,4 +1,4 @@
-﻿"""
+"""
 Street Entity Profiler & Routine Activity Discovery Engine
 ===========================================================
 Automatically discovers recurring street regulars (vendors, shopkeepers, commuters,
@@ -112,6 +112,7 @@ class StreetEntityProfiler:
         bbox: List[int],
         frame_bgr: np.ndarray,
         pose_res: Optional[PoseResult] = None,
+        is_mannequin: bool = False,
     ) -> Dict[str, Any]:
         """
         Process a detected person in the current frame:
@@ -214,29 +215,34 @@ class StreetEntityProfiler:
                 )
 
         # Role Activity Classifier
-        self._classify_role(session)
+        if is_mannequin:
+            session.classified_role = "DISPLAY_MANNEQUIN"
+            session.role_confidence = 0.95
+        else:
+            self._classify_role(session)
 
         # Autonomous Registration & Promotion:
-        # If candidate has persisted > MIN_FRAMES_TO_QUALIFY and is still unknown, register as a new Regular!
+        # If candidate has persisted > MIN_FRAMES_TO_QUALIFY and is still unknown (and NOT a mannequin!), register as a new Regular!
         if (
-            session.regular_alias is None
+            not is_mannequin
+            and session.regular_alias is None
             and session.frame_count >= MIN_FRAMES_TO_QUALIFY
             and current_emb is not None
         ):
             self._register_new_regular(session, current_emb)
 
         # Periodic DB Sync every 5 seconds
-        if session.regular_id is not None and (now - session.last_db_sync > 5.0):
+        if not is_mannequin and session.regular_id is not None and (now - session.last_db_sync > 5.0):
             self._sync_session_to_db(session, current_emb)
 
         # Return status for badge overlay
         display_name = session.custom_name if session.custom_name else session.regular_alias
         return {
-            "is_regular": session.regular_alias is not None,
-            "regular_id": session.regular_id,
-            "regular_alias": session.regular_alias,
-            "custom_name": session.custom_name,
-            "display_name": display_name,
+            "is_regular": (session.regular_alias is not None) and not is_mannequin,
+            "regular_id": session.regular_id if not is_mannequin else None,
+            "regular_alias": session.regular_alias if not is_mannequin else None,
+            "custom_name": session.custom_name if not is_mannequin else None,
+            "display_name": display_name if not is_mannequin else "DISPLAY_MANNEQUIN",
             "role": session.classified_role,
             "role_confidence": round(session.role_confidence, 2),
             "dwell_seconds": round(now - session.first_seen, 1),

@@ -22,6 +22,7 @@ from engine.pose_estimator import PoseEstimator, PoseResult
 from engine.threat_analyzer import ThreatAnalyzer, ThreatEvent
 from engine.person_reid import person_reid
 from engine.street_entity_profiler import street_entity_profiler
+from engine.liveness_detector import human_liveness_detector
 from engine.vehicle_tracker import vehicle_tracker
 from engine.intelligence_db import intelligence_db, SNAPSHOTS_DIR
 
@@ -168,8 +169,23 @@ class CrimeDetectionPipeline:
                                 snapshot_filename=s_name,
                             )
 
-        # ── Street Regulars & Routine Activity Profiling (Crowded Street AI) ───
+        # ── Human Liveness & Fake Mannequin Detection ──────────────────
+        human_liveness_detector.update_frame(frame)
         pose_by_track = {pr.track_id: pr for pr in pose_results if pr.track_id >= 0}
+
+        for det in tracked_dets:
+            if det.is_person and det.track_id >= 0:
+                p_pose = pose_by_track.get(det.track_id)
+                live_info = human_liveness_detector.evaluate_person(
+                    track_id=det.track_id,
+                    bbox=det.bbox,
+                    frame_bgr=frame,
+                    pose_res=p_pose,
+                )
+                det.is_mannequin = live_info["is_mannequin"]
+                det.liveness_score = live_info["liveness_score"]
+
+        # ── Street Regulars & Routine Activity Profiling (Crowded Street AI) ───
         for det in tracked_dets:
             if det.is_person and det.track_id >= 0:
                 p_pose = pose_by_track.get(det.track_id)
@@ -178,6 +194,7 @@ class CrimeDetectionPipeline:
                     bbox=list(det.bbox),
                     frame_bgr=frame,
                     pose_res=p_pose,
+                    is_mannequin=det.is_mannequin,
                 )
                 if reg_info.get("is_regular"):
                     det.regular_id = reg_info.get("regular_id")
@@ -188,6 +205,7 @@ class CrimeDetectionPipeline:
 
         if self._frame_count % 90 == 0:
             street_entity_profiler.cleanup_inactive_tracks(max_idle_seconds=10.0)
+            human_liveness_detector.cleanup_inactive([d.track_id for d in tracked_dets if d.track_id >= 0])
 
         # ── Vehicle Tracking & Number Plate Recognition (ANPR) ────────
         vehicle_dets = [d for d in tracked_dets if d.is_vehicle]

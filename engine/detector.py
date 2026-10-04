@@ -43,6 +43,8 @@ class Detection:
     regular_name: Optional[str] = None       # Street Regular custom name
     regular_role: Optional[str] = None       # Street Regular role (e.g. STREET_VENDOR)
     regular_conf: float = 0.0
+    is_mannequin: bool = False               # Detected display dummy / mannequin
+    liveness_score: float = 1.0              # Liveness confidence (0.0 to 1.0)
     timestamp: float = field(default_factory=time.time)
 
     def __post_init__(self):
@@ -265,7 +267,10 @@ class WeaponDetector:
         vis = frame.copy()
         for det in detections:
             x1, y1, x2, y2 = det.bbox
-            if det.target_match_name:
+            if det.is_mannequin:
+                color = (130, 130, 130)  # Steel-gray for plastic / display dummy
+                label = f"MANNEQUIN/DUMMY [LIVE:{det.liveness_score:.0%}]"
+            elif det.target_match_name:
                 color = (20, 20, 220)  # Intense alert red
                 label = f"TARGET: {det.target_match_name.upper()} [{det.target_match_conf:.0%}]"
             elif det.regular_alias:
