@@ -23,6 +23,7 @@ from engine.threat_analyzer import ThreatAnalyzer, ThreatEvent
 from engine.person_reid import person_reid
 from engine.street_entity_profiler import street_entity_profiler
 from engine.liveness_detector import human_liveness_detector
+from engine.bike_cargo_analyzer import bike_cargo_analyzer
 from engine.vehicle_tracker import vehicle_tracker
 from engine.intelligence_db import intelligence_db, SNAPSHOTS_DIR
 
@@ -140,6 +141,14 @@ class CrimeDetectionPipeline:
 
         # Now update temporal motion features with valid track IDs
         self.pose_estimator.update_motion(pose_results)
+
+        # ── Two-Wheeler Helmet & Cargo Disambiguation ──────────────────
+        bike_cargo_analyzer.analyze_two_wheelers(
+            frame_bgr=frame,
+            vehicle_dets=tracked_dets,
+            person_dets=[d for d in tracked_dets if d.is_person and d.track_id >= 0],
+            pose_results=pose_results,
+        )
 
         # ── Person Watchlist Re-ID Matching ────────────────────────────
         # For each tracked person, check visual appearance against enrolled gallery

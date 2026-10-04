@@ -45,6 +45,10 @@ class Detection:
     regular_conf: float = 0.0
     is_mannequin: bool = False               # Detected display dummy / mannequin
     liveness_score: float = 1.0              # Liveness confidence (0.0 to 1.0)
+    is_cargo: bool = False                   # Carried luggage, guitar gig-bag, backpack
+    cargo_type: str = ""                     # "GUITAR_BAG", "BACKPACK", "DELIVERY_BOX"
+    has_helmet: Optional[bool] = None        # True: Helmet compliant, False: No helmet violation
+    helmet_conf: float = 0.0
     timestamp: float = field(default_factory=time.time)
 
     def __post_init__(self):
@@ -267,12 +271,21 @@ class WeaponDetector:
         vis = frame.copy()
         for det in detections:
             x1, y1, x2, y2 = det.bbox
-            if det.is_mannequin:
+            if det.is_cargo:
+                color = (200, 160, 0)  # Bright cyan/teal for carried luggage/guitar bag
+                label = f"CARGO: {det.cargo_type or 'BAG'}"
+            elif det.is_mannequin:
                 color = (130, 130, 130)  # Steel-gray for plastic / display dummy
                 label = f"MANNEQUIN/DUMMY [LIVE:{det.liveness_score:.0%}]"
             elif det.target_match_name:
                 color = (20, 20, 220)  # Intense alert red
                 label = f"TARGET: {det.target_match_name.upper()} [{det.target_match_conf:.0%}]"
+            elif det.has_helmet is False:
+                color = (0, 69, 255)  # Orange-red traffic safety violation
+                label = f"RIDER [NO HELMET VIOLATION ({det.helmet_conf:.0%})]"
+            elif det.has_helmet is True:
+                color = (60, 200, 60)  # Green compliant
+                label = f"RIDER [HELMET OK ({det.helmet_conf:.0%})]"
             elif det.regular_alias:
                 color = (0, 180, 240)  # Warm Gold / Amber badge for Street Regular
                 display = det.regular_name if det.regular_name else det.regular_alias
