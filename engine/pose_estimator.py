@@ -119,6 +119,10 @@ class PoseResult:
     # Enhanced posture — now includes STRIKING, STABBING, FIGHTING_STANCE
     posture: str = "unknown"
 
+    # Compliant safe action indicators (hands up / waving / surrender / clear)
+    is_safe_action: bool = False
+    safe_action_label: str = ""
+
     # Temporal motion analysis
     motion: MotionFeatures = field(default_factory=MotionFeatures)
 
@@ -395,15 +399,39 @@ class PoseEstimator:
             if shoulder_spread > 0 and foot_spread / shoulder_spread > 1.5:
                 return "fighting_stance"
 
-        # Arms raised: wrist above shoulder
-        raised = 0
-        if _kp_valid(kp, KP["l_shoulder"]) and _kp_valid(kp, KP["l_wrist"]):
-            if kp[KP["l_wrist"],1] < kp[KP["l_shoulder"],1]:
-                raised += 1
-        if _kp_valid(kp, KP["r_shoulder"]) and _kp_valid(kp, KP["r_wrist"]):
-            if kp[KP["r_wrist"],1] < kp[KP["r_shoulder"],1]:
-                raised += 1
-        if raised >= 1:
+        # Arms raised / Waving / Safe Action:
+        # Check if wrists are raised above shoulders or in upper body/head region (works for seated webcam demos too)
+        bx1, by1, bx2, by2 = pr.person_bbox
+        bbox_height = max(1, by2 - by1)
+
+        l_wrist_up = False
+        r_wrist_up = False
+        if _kp_valid(kp, KP["l_wrist"]):
+            lw_y = kp[KP["l_wrist"], 1]
+            if _kp_valid(kp, KP["l_shoulder"]) and lw_y < kp[KP["l_shoulder"], 1]:
+                l_wrist_up = True
+            elif _kp_valid(kp, KP["nose"]) and lw_y < kp[KP["nose"], 1] + 25:
+                l_wrist_up = True
+            elif lw_y < by1 + bbox_height * 0.45:
+                l_wrist_up = True
+
+        if _kp_valid(kp, KP["r_wrist"]):
+            rw_y = kp[KP["r_wrist"], 1]
+            if _kp_valid(kp, KP["r_shoulder"]) and rw_y < kp[KP["r_shoulder"], 1]:
+                r_wrist_up = True
+            elif _kp_valid(kp, KP["nose"]) and rw_y < kp[KP["nose"], 1] + 25:
+                r_wrist_up = True
+            elif rw_y < by1 + bbox_height * 0.45:
+                r_wrist_up = True
+
+        raised = (1 if l_wrist_up else 0) + (1 if r_wrist_up else 0)
+        if raised >= 2:
+            pr.is_safe_action = True
+            pr.safe_action_label = "HANDS RAISED (SAFE)"
+            return "hands_up_safe"
+        elif raised == 1:
+            pr.is_safe_action = True
+            pr.safe_action_label = "ARM RAISED / WAVING (SAFE)"
             return "arms_raised"
 
         # Aiming: nearly straight extended arm
@@ -418,12 +446,13 @@ class PoseEstimator:
         vis = frame.copy()
 
         POSTURE_COLORS = {
+            "hands_up_safe":  (0, 255, 0),    # Bright Green for safe action
+            "arms_raised":    (0, 255, 0),    # Bright Green for safe action
             "fallen":         (0, 0, 200),
             "stabbing":       (0, 0, 180),
             "striking":       (0, 40, 220),
             "aiming":         (0, 60, 200),
             "fighting_stance":(0, 100, 200),
-            "arms_raised":    (0, 140, 200),
             "crouching":      (0, 180, 140),
             "standing":       (0, 160, 0),
             "unknown":        (100, 100, 100),
@@ -443,7 +472,8 @@ class PoseEstimator:
             # Keypoints
             for i in range(17):
                 if _kp_valid(kp, i, 0.3):
-                    cv2.circle(vis, (int(kp[i,0]), int(kp[i,1])), 4, (200, 200, 80), -1)
+                    kp_color = (0, 255, 0) if pr.is_safe_action else (200, 200, 80)
+                    cv2.circle(vis, (int(kp[i,0]), int(kp[i,1])), 4, kp_color, -1)
 
             # Strike/Stab velocity indicator on wrist
             for wrist, vel, side in [
@@ -467,7 +497,8 @@ class PoseEstimator:
 
             # Posture label
             x1, y1, x2, y2 = pr.person_bbox
-            cv2.putText(vis, pr.posture.upper(), (x1, y2+18),
+            display_label = pr.safe_action_label if pr.is_safe_action else pr.posture.upper()
+            cv2.putText(vis, display_label, (x1, y2+18),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
 
         return vis

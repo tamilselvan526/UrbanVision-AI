@@ -395,6 +395,22 @@ body::after {
   color: var(--threat-high);
   border-color: var(--threat-high);
 }
+.btn-demo-green {
+  color: #00ff66;
+  border-color: #00ff66;
+  background: rgba(0, 255, 102, 0.08);
+  box-shadow: 0 0 8px rgba(0, 255, 102, 0.15);
+}
+.btn-demo-green:not(:disabled):hover {
+  background: rgba(0, 255, 102, 0.22);
+  box-shadow: 0 0 14px rgba(0, 255, 102, 0.45);
+}
+.btn-demo-green.active {
+  background: #00ff66 !important;
+  color: #081208 !important;
+  font-weight: 700;
+  box-shadow: 0 0 16px rgba(0, 255, 102, 0.6);
+}
 .btn-dl {
   color: var(--tan-dim);
   border-color: var(--border-active);

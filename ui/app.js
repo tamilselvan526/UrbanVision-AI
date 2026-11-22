@@ -39,6 +39,7 @@ const arcScoreText = document.getElementById("arc-score-text");
 const threatLevelLabel = document.getElementById("threat-level-label");
 const btnStart = document.getElementById("btn-start");
 const btnStop = document.getElementById("btn-stop");
+const btnDemoGreen = document.getElementById("btn-demo-green");
 const btnDownload = document.getElementById("btn-download");
 const sourceSelect = document.getElementById("source-select");
 const rtspInput = document.getElementById("rtsp-input");
@@ -130,6 +131,37 @@ btnStop.addEventListener("click", async () => {
   showToast("⏹ Stream stopped.");
 });
 
+/* ── Demo Safe Action (Green Frame Toggle) ────────────────────────── */
+if (btnDemoGreen) {
+  btnDemoGreen.addEventListener("click", async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/demo_action`, { method: "POST" });
+      const data = await resp.json();
+      if (data.status === "ok") {
+        if (data.demo_green_action) {
+          btnDemoGreen.classList.add("active");
+          btnDemoGreen.textContent = "> GREEN FRAME [ACTIVE]";
+          showToast("🟢 Safe Action recognized: Green frame active!");
+        } else {
+          btnDemoGreen.classList.remove("active");
+          btnDemoGreen.textContent = "> DEMO SAFE ACTION [G]";
+          showToast("⚪ Green frame deactivated.");
+        }
+      }
+    } catch (err) {
+      showToast(`Error toggling demo action: ${err}`, true);
+    }
+  });
+}
+
+// Shortcut: press 'g' or 'G' to toggle demo action
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+  if (e.key === "g" || e.key === "G") {
+    if (btnDemoGreen) btnDemoGreen.click();
+  }
+});
+
 /* ── WebSocket ────────────────────────────────────────────────────────── */
 function startWebSocket() {
   if (ws) stopWebSocket();
@@ -145,7 +177,14 @@ function startWebSocket() {
   };
 
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
+    if (typeof event.data !== "string") return;
+    let msg;
+    try {
+      msg = JSON.parse(event.data);
+    } catch (e) {
+      console.warn("[WS] Non-JSON payload received:", e);
+      return;
+    }
 
     if (msg.type === "frame") {
       waitingOverlay.classList.add("hidden");

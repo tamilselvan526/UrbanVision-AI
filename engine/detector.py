@@ -49,6 +49,8 @@ class Detection:
     cargo_type: str = ""                     # "GUITAR_BAG", "BACKPACK", "DELIVERY_BOX"
     has_helmet: Optional[bool] = None        # True: Helmet compliant, False: No helmet violation
     helmet_conf: float = 0.0
+    is_safe_action: bool = False             # Compliant safe action (e.g. hands raised / waving)
+    safe_action_label: str = ""              # Display label for safe action
     timestamp: float = field(default_factory=time.time)
 
     def __post_init__(self):
@@ -271,7 +273,10 @@ class WeaponDetector:
         vis = frame.copy()
         for det in detections:
             x1, y1, x2, y2 = det.bbox
-            if det.is_cargo:
+            if getattr(det, "is_safe_action", False):
+                color = (0, 255, 0)  # Bright neon green for recognizable safe action
+                label = f"SAFE ACTION: {det.safe_action_label or 'GREEN'}"
+            elif det.is_cargo:
                 color = (200, 160, 0)  # Bright cyan/teal for carried luggage/guitar bag
                 label = f"CARGO: {det.cargo_type or 'BAG'}"
             elif det.is_mannequin:

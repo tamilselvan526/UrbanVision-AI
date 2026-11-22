@@ -137,6 +137,9 @@ def main():
                 config.show_skeleton = not config.show_skeleton
             elif key == ord("h"):
                 config.show_threat_hud = not config.show_threat_hud
+            elif key == ord("g"):
+                active = pipeline.threat_analyzer.toggle_demo_green_action()
+                logger.info(f"DEMO SAFE ACTION (GREEN FRAME): {'ACTIVE' if active else 'INACTIVE'}")
 
     finally:
         cap.release()

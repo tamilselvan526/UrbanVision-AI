@@ -142,6 +142,22 @@ class CrimeDetectionPipeline:
         # Now update temporal motion features with valid track IDs
         self.pose_estimator.update_motion(pose_results)
 
+        # Propagate safe action status from pose estimator to tracked persons
+        pose_by_track = {pr.track_id: pr for pr in pose_results if pr.track_id >= 0}
+        for det in tracked_dets:
+            if det.is_person and det.track_id in pose_by_track:
+                pr = pose_by_track[det.track_id]
+                if getattr(pr, "is_safe_action", False):
+                    det.is_safe_action = True
+                    det.safe_action_label = getattr(pr, "safe_action_label", "HANDS RAISED (SAFE)")
+
+        if getattr(self.threat_analyzer, "_demo_green_action", False):
+            for det in tracked_dets:
+                if det.is_person and not det.is_weapon:
+                    det.is_safe_action = True
+                    if not det.safe_action_label:
+                        det.safe_action_label = "DEMO: HANDS RAISED (SAFE)"
+
         # ── Two-Wheeler Helmet & Cargo Disambiguation ──────────────────
         bike_cargo_analyzer.analyze_two_wheelers(
             frame_bgr=frame,

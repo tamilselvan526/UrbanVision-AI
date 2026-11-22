@@ -71,20 +71,23 @@ _pipeline: Optional[CrimeDetectionPipeline] = None
 _streamer: Optional[VideoStreamer] = None
 _active_clients: Set[WebSocket] = set()
 _pipeline_lock = threading.Lock()
+_state_lock = threading.Lock()
 _latest_frame_jpg: Optional[bytes] = None
+_latest_frame_id: int = -1
 _current_source: str = "None"
 _is_running: bool = False
 _frame_count: int = 0
 _current_fps: float = 0.0
 _pipeline_thread: Optional[threading.Thread] = None
 _stop_event = threading.Event()
+_alerts_history: list[dict] = []
 
 
 # ── Pipeline Background Thread ─────────────────────────────────────────────
 
 def _pipeline_loop():
     """Background thread: pull frames, run pipeline, update latest_frame."""
-    global _latest_frame_jpg, _frame_count, _current_fps, _is_running
+    global _latest_frame_jpg, _latest_frame_id, _frame_count, _current_fps, _is_running
 
     _stop_event.clear()
     logger.info("[Server] Pipeline loop started.")
@@ -103,44 +106,40 @@ def _pipeline_loop():
 
         try:
             result = _pipeline.process_frame(frame)
-            _frame_count = result.frame_id
-            _current_fps = result.fps
+            frame_id = result.frame_id
+            fps = result.fps
 
             # JPEG encode annotated frame
             _, jpg = cv2.imencode(
                 ".jpg", result.annotated_frame,
                 [cv2.IMWRITE_JPEG_QUALITY, 75]
             )
-            _latest_frame_jpg = jpg.tobytes()
+            jpg_bytes = jpg.tobytes()
 
-            # Broadcast new alerts to all WebSocket clients
+            # Process new alerts
+            new_alerts = []
             if result.threat_events:
                 high_events = [
                     e for e in result.threat_events if e.threat_score >= 45.0
                 ]
                 if high_events:
                     alerts = [IncidentAlert.from_threat_event(e) for e in high_events]
-                    msg = json.dumps({
-                        "type": "alerts",
-                        "alerts": [a.model_dump() for a in alerts],
-                    })
-                    asyncio.run(_broadcast(msg))
+                    new_alerts = [a.model_dump() for a in alerts]
+
+            with _state_lock:
+                _latest_frame_jpg = jpg_bytes
+                _latest_frame_id = frame_id
+                _frame_count = frame_id
+                _current_fps = fps
+                if new_alerts:
+                    _alerts_history.extend(new_alerts)
+                    if len(_alerts_history) > 200:
+                        del _alerts_history[:-200]
 
         except Exception as e:
             logger.error(f"[Pipeline] Error processing frame: {e}")
 
     logger.info("[Server] Pipeline loop stopped.")
-
-
-async def _broadcast(message: str):
-    """Broadcast a text message to all connected WebSocket clients."""
-    dead = set()
-    for ws in list(_active_clients):
-        try:
-            await ws.send_text(message)
-        except Exception:
-            dead.add(ws)
-    _active_clients.difference_update(dead)
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────
@@ -207,13 +206,17 @@ async def start_stream(
 @app.post("/stop")
 async def stop_stream():
     """Stop the detection pipeline."""
-    global _is_running
+    global _is_running, _latest_frame_jpg, _latest_frame_id
 
     _stop_event.set()
     _is_running = False
 
     if _streamer:
         _streamer.stop()
+
+    with _state_lock:
+        _latest_frame_jpg = None
+        _latest_frame_id = -1
 
     logger.info("[Server] Stream stopped.")
     return {"status": "stopped"}
@@ -265,24 +268,54 @@ async def websocket_stream(websocket: WebSocket):
     _active_clients.add(websocket)
     logger.info(f"[WS] Client connected. Total: {len(_active_clients)}")
 
+    last_sent_frame_id = -1
+    sent_waiting = False
+    with _state_lock:
+        last_alert_idx = len(_alerts_history)
+
     try:
         while True:
             await asyncio.sleep(1 / 30)  # ~30 fps push rate
 
-            frame_bytes = _latest_frame_jpg
-            if frame_bytes is None:
-                # Send a waiting frame
-                await websocket.send_text(json.dumps({"type": "waiting"}))
-                continue
+            frame_bytes = None
+            frame_id = -1
+            fps = 0.0
+            pending_alerts = []
 
-            b64 = base64.b64encode(frame_bytes).decode("utf-8")
-            msg = json.dumps({
-                "type": "frame",
-                "data": b64,
-                "fps": round(_current_fps, 1),
-                "frame_id": _frame_count,
-            })
-            await websocket.send_text(msg)
+            with _state_lock:
+                total_alerts = len(_alerts_history)
+                if total_alerts > last_alert_idx:
+                    pending_alerts = _alerts_history[last_alert_idx:total_alerts]
+                    last_alert_idx = total_alerts
+
+                if _latest_frame_id != last_sent_frame_id and _latest_frame_jpg is not None:
+                    frame_bytes = _latest_frame_jpg
+                    frame_id = _latest_frame_id
+                    fps = _current_fps
+
+            # Send alerts first
+            if pending_alerts:
+                msg = json.dumps({
+                    "type": "alerts",
+                    "alerts": pending_alerts,
+                })
+                await websocket.send_text(msg)
+
+            # Send frame if updated
+            if frame_bytes is not None:
+                last_sent_frame_id = frame_id
+                sent_waiting = False
+                b64 = base64.b64encode(frame_bytes).decode("utf-8")
+                msg = json.dumps({
+                    "type": "frame",
+                    "data": b64,
+                    "fps": round(fps, 1),
+                    "frame_id": frame_id,
+                })
+                await websocket.send_text(msg)
+            elif last_sent_frame_id == -1 and not sent_waiting:
+                await websocket.send_text(json.dumps({"type": "waiting"}))
+                sent_waiting = True
 
     except WebSocketDisconnect:
         logger.info("[WS] Client disconnected.")
@@ -290,6 +323,24 @@ async def websocket_stream(websocket: WebSocket):
         logger.error(f"[WS] Error: {e}")
     finally:
         _active_clients.discard(websocket)
+
+
+@app.post("/demo_action")
+async def toggle_demo_action(enabled: Optional[bool] = None):
+    """Toggle or set demo safe action (hands raised / green frame)."""
+    global _pipeline
+    with _pipeline_lock:
+        if not _pipeline:
+            config = PipelineConfig(device=None)
+            _pipeline = CrimeDetectionPipeline(config)
+        current = _pipeline.threat_analyzer.toggle_demo_green_action(enabled)
+
+    return {
+        "status": "ok",
+        "demo_green_action": current,
+        "action_name": "HANDS RAISED / WAVING (SAFE ACTION)",
+        "frame_indicator": "GREEN FRAME ACTIVE" if current else "INACTIVE",
+    }
 
 
 # ── Watchlist & Person Re-ID Endpoints ─────────────────────────────────────

@@ -43,7 +43,8 @@ def test_1_database():
 
     results = intelligence_db.search_vehicles(query=test_plate[:4])
     assert len(results) > 0, f"Expected search results for {test_plate}"
-    match = results[0]
+    match = next((v for v in results if v["plate_number"] == test_plate), None)
+    assert match is not None, f"Expected {test_plate} to be found in search results"
     assert match["plate_number"] == test_plate
     logger.success(f"  ✓ Saved and retrieved vehicle record: {test_plate} (type: {match['vehicle_type']})")
 
@@ -65,6 +66,12 @@ def test_2_person_reid():
     """Verify Person Re-ID embedding extraction and cosine similarity matching."""
     logger.info("=== TEST 2: Person Re-ID & Visual Watchlist Matching ===")
 
+    # Clean up any leftover test suspect entries from previous test runs
+    with intelligence_db._get_conn() as conn:
+        conn.execute("DELETE FROM watchlist_persons WHERE name LIKE 'Suspect_%'")
+        conn.commit()
+    person_reid.reload_watchlist()
+
     # Create synthetic person crop A (e.g. blue jacket, black trousers)
     img_a = np.zeros((200, 100, 3), dtype=np.uint8)
     img_a[0:60, :] = (40, 140, 200)   # upper / jacket
@@ -72,24 +79,29 @@ def test_2_person_reid():
     img_a[140:200, :] = (20, 20, 30)  # dark trousers
 
     # Enroll person A
-    target_name = f"Suspect_{int(time.time()) % 1000}"
+    target_name = f"Suspect_{int(time.time() * 1000) % 100000}"
     pid, _ = person_reid.enroll_person(name=target_name, image_bgr=img_a, notes="Wanted for test")
     assert pid > 0
 
-    # Test matching identical crop A
-    match = person_reid.match_crop(img_a, threshold_override=0.70)
-    assert match is not None, "Expected match for identical crop"
-    matched_name, sim = match
-    logger.success(f"  ✓ Identical crop matched: '{matched_name}' with {sim:.1%} similarity")
-    assert matched_name == target_name
-    assert sim >= 0.85, f"Expected similarity >= 0.85, got {sim}"
+    try:
+        # Test matching identical crop A
+        match = person_reid.match_crop(img_a, threshold_override=0.70)
+        assert match is not None, "Expected match for identical crop"
+        matched_name, sim = match
+        logger.success(f"  ✓ Identical crop matched: '{matched_name}' with {sim:.1%} similarity")
+        assert matched_name == target_name
+        assert sim >= 0.85, f"Expected similarity >= 0.85, got {sim}"
 
-    # Create different person crop B (all yellow/green)
-    img_b = np.zeros((200, 100, 3), dtype=np.uint8)
-    img_b[:] = (30, 220, 220)
-    match_b = person_reid.match_crop(img_b, threshold_override=0.85)
-    assert match_b is None, "Did not expect different person B to match at high threshold"
-    logger.success("  ✓ Successfully distinguished distinct person appearance (no false positive)")
+        # Create different person crop B (all yellow/green)
+        img_b = np.zeros((200, 100, 3), dtype=np.uint8)
+        img_b[:] = (30, 220, 220)
+        match_b = person_reid.match_crop(img_b, threshold_override=0.85)
+        assert match_b is None, "Did not expect different person B to match at high threshold"
+        logger.success("  ✓ Successfully distinguished distinct person appearance (no false positive)")
+    finally:
+        intelligence_db.delete_watchlist_person(pid)
+        person_reid.reload_watchlist()
+
     return True
 
 

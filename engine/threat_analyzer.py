@@ -99,6 +99,8 @@ class ThreatEvent:
     weapon_center:    Optional[Tuple[int, int]] = None
     target_track_id:  Optional[int] = None
     snapshot:         Optional[np.ndarray] = None
+    is_safe_action:   bool = False
+    safe_action_label: str = ""
 
 
 @dataclass
@@ -127,7 +129,16 @@ class ThreatAnalyzer:
         self.alert_threshold = alert_threshold
         self._person_states: Dict[int, PersonThreatState] = {}
         self.incident_log: List[ThreatEvent] = []
+        self._demo_green_action: bool = False  # Toggle for presentation/demo green action frame
         logger.success("[ThreatAnalyzer] Algorithm 4 Enhanced (Behavioral AI) ready.")
+
+    def toggle_demo_green_action(self, state: Optional[bool] = None) -> bool:
+        """Toggle or set manual demo green action frame state for presentations."""
+        if state is None:
+            self._demo_green_action = not self._demo_green_action
+        else:
+            self._demo_green_action = bool(state)
+        return self._demo_green_action
 
     def analyze(
         self,
@@ -195,6 +206,20 @@ class ThreatAnalyzer:
             level  = self._score_to_level(smooth)
             label  = THREAT_LABELS[level]
 
+            is_safe = (pose and getattr(pose, "is_safe_action", False)) or getattr(person, "is_safe_action", False) or self._demo_green_action
+            safe_lbl = (getattr(pose, "safe_action_label", "") if pose else "") or getattr(person, "safe_action_label", "")
+            if self._demo_green_action and not safe_lbl:
+                safe_lbl = "DEMO: HANDS RAISED (SAFE)"
+
+            if is_safe and not weapon:
+                smooth = 0.0
+                level = ThreatLevel.NONE
+                label = "SAFE ACTION"
+                if "ACTION_STATUS: GREEN_FRAME" not in tags:
+                    tags.append("ACTION_STATUS: GREEN_FRAME")
+                if safe_lbl and safe_lbl not in tags:
+                    tags.append(safe_lbl)
+
             target_tid = self._find_aim_target(person, pose, persons, tid) if pose else None
 
             event = ThreatEvent(
@@ -209,6 +234,8 @@ class ThreatAnalyzer:
                 weapon_bbox=weapon.bbox if weapon else None,
                 weapon_center=weapon.center if weapon else None,
                 target_track_id=target_tid,
+                is_safe_action=is_safe and not weapon,
+                safe_action_label=safe_lbl or "SAFE ACTION: GREEN",
             )
 
             # Snapshot + log on new alert
@@ -253,6 +280,12 @@ class ThreatAnalyzer:
 
         score = 0.0
         tags: List[str] = []
+
+        # ── Safe Action Check (Compliant / Raised Hands / Waving) ──────
+        is_safe = (pose and getattr(pose, "is_safe_action", False)) or getattr(person, "is_safe_action", False) or self._demo_green_action
+        if is_safe and not weapon:
+            lbl = (getattr(pose, "safe_action_label", "") if pose else "") or getattr(person, "safe_action_label", "") or "HANDS RAISED (SAFE)"
+            return 0.0, [lbl, "ACTION_STATUS: GREEN_FRAME", "COMPLIANT_ACTION"]
 
         # ── Feature 1: Detected weapon / object ─────────────────────────
         if weapon:
@@ -541,56 +574,128 @@ class ThreatAnalyzer:
         vis = frame.copy()
         h, w = vis.shape[:2]
 
+        has_safe_action = any(getattr(e, 'is_safe_action', False) for e in events) or getattr(self, '_demo_green_action', False)
+
         for event in events:
-            color = THREAT_COLORS[event.threat_level]
+            is_safe = getattr(event, 'is_safe_action', False) or (self._demo_green_action and event.threat_level == ThreatLevel.NONE)
+            if is_safe:
+                color = (0, 255, 0)  # Bright vibrant neon green
+                thick = 3
+                label = f"ID#{event.person_track_id} {getattr(event, 'safe_action_label', '') or 'SAFE ACTION: GREEN'}"
+            else:
+                color = THREAT_COLORS[event.threat_level]
+                thick = max(1, event.threat_level + 1)
+                label = f"{event.threat_label} [{event.threat_score:.0f}%]"
+
             x1, y1, x2, y2 = event.person_bbox
 
             # Person border (thickness scales with threat)
-            thick = max(1, event.threat_level + 1)
-            cv2.rectangle(vis, (x1,y1), (x2,y2), color, thick)
+            cv2.rectangle(vis, (x1, y1), (x2, y2), color, thick)
 
             # Weapon → wrist link
-            if event.weapon_center:
-                cv2.line(vis, event.person_center, event.weapon_center, (0,30,200), 2, cv2.LINE_AA)
-                cv2.circle(vis, event.weapon_center, 9, (0,0,180), -1)
+            if event.weapon_center and not is_safe:
+                cv2.line(vis, event.person_center, event.weapon_center, (0, 30, 200), 2, cv2.LINE_AA)
+                cv2.circle(vis, event.weapon_center, 9, (0, 0, 180), -1)
                 cv2.putText(vis, event.weapon_class.upper(),
-                            (event.weapon_center[0]+10, event.weapon_center[1]),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0,0,200), 1, cv2.LINE_AA)
+                            (event.weapon_center[0] + 10, event.weapon_center[1]),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 0, 200), 1, cv2.LINE_AA)
 
             # Score bar
-            bar_w  = x2-x1
-            fill_w = int(bar_w * event.threat_score / 100.0)
-            cv2.rectangle(vis, (x1, y2+2), (x2, y2+8), (35,35,35), -1)
-            cv2.rectangle(vis, (x1, y2+2), (x1+fill_w, y2+8), color, -1)
+            bar_w = x2 - x1
+            fill_w = int(bar_w * (0.0 if is_safe else event.threat_score / 100.0))
+            cv2.rectangle(vis, (x1, y2 + 2), (x2, y2 + 8), (35, 35, 35), -1)
+            if fill_w > 0:
+                cv2.rectangle(vis, (x1, y2 + 2), (x1 + fill_w, y2 + 8), color, -1)
 
             # Label badge
-            label = f"{event.threat_label} [{event.threat_score:.0f}%]"
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
-            cv2.rectangle(vis, (x1, y1-th-10), (x1+tw+6, y1), color, -1)
-            cv2.putText(vis, label, (x1+3, y1-4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255,255,255), 1, cv2.LINE_AA)
+            cv2.rectangle(vis, (x1, y1 - th - 10), (x1 + tw + 6, y1), color, -1)
+            text_color = (0, 0, 0) if is_safe else (255, 255, 255)
+            cv2.putText(vis, label, (x1 + 3, y1 - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, text_color, 1, cv2.LINE_AA)
 
             # Action tags (right side, max 5)
-            for k, tag in enumerate(event.action_tags[:5]):
-                cv2.putText(vis, f"> {tag}", (x2+5, y1+14+k*14),
+            display_tags = event.action_tags[:5]
+            if is_safe and not display_tags:
+                display_tags = ["ACTION_STATUS: GREEN_FRAME", "HANDS RAISED (SAFE)"]
+            for k, tag in enumerate(display_tags):
+                cv2.putText(vis, f"> {tag}", (x2 + 5, y1 + 14 + k * 14),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.34, color, 1, cv2.LINE_AA)
 
+        # ── Visual Green Frame for Recognizable Safe Action ──────────────────
+        if has_safe_action:
+            # 1. Top status banner
+            banner_h = 36
+            banner_sub = vis[0:banner_h, 0:w].copy()
+            overlay = np.zeros_like(banner_sub)
+            overlay[:] = (10, 38, 10)
+            vis[0:banner_h, 0:w] = cv2.addWeighted(banner_sub, 0.25, overlay, 0.75, 0)
+            cv2.line(vis, (0, banner_h), (w, banner_h), (0, 255, 0), 2)
+            cv2.putText(
+                vis,
+                "[ACTION RECOGNIZED: HANDS RAISED - SAFE (GREEN FRAME ACTIVE)]",
+                (20, 24),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.58,
+                (0, 255, 0),
+                2,
+                cv2.LINE_AA,
+            )
+
+            # 2. Bottom sub-banner for prototype demonstration
+            footer_y = max(0, h - 28)
+            footer_sub = vis[footer_y:h, 0:w].copy()
+            footer_over = np.zeros_like(footer_sub)
+            footer_over[:] = (10, 28, 10)
+            vis[footer_y:h, 0:w] = cv2.addWeighted(footer_sub, 0.25, footer_over, 0.75, 0)
+            cv2.line(vis, (0, footer_y), (w, footer_y), (0, 255, 0), 1)
+            cv2.putText(
+                vis,
+                "SMART CITY AI CRIME MONITORING | PROTOTYPE DEMO | STATUS: NORMAL / COMPLIANT ACTION",
+                (20, h - 9),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.42,
+                (140, 255, 140),
+                1,
+                cv2.LINE_AA,
+            )
+
+            # 3. 8px thick vibrant neon green perimeter frame along all borders
+            cv2.rectangle(vis, (0, 0), (w - 1, h - 1), (0, 255, 0), 8)
+            # Inner accent line
+            cv2.rectangle(vis, (12, 12), (w - 13, h - 13), (0, 210, 0), 1)
+
         # Global HUD
-        if events:
-            ms  = max(e.threat_score for e in events)
-            ml  = max(e.threat_level for e in events)
-            hc  = THREAT_COLORS[ml]
-            hl  = THREAT_LABELS[ml]
-            cv2.rectangle(vis, (w-225,10), (w-10,95), (18,18,18), -1)
-            cv2.rectangle(vis, (w-225,10), (w-10,95), hc, 2)
-            cv2.putText(vis, "THREAT LEVEL", (w-220,28),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180,180,180), 1)
-            cv2.putText(vis, hl, (w-220,52),
+        if events or has_safe_action:
+            if events:
+                ms = max(e.threat_score for e in events)
+                ml = max(e.threat_level for e in events)
+                hc = THREAT_COLORS[ml]
+                hl = THREAT_LABELS[ml]
+            else:
+                ms = 0.0
+                ml = ThreatLevel.NONE
+                hc = (0, 255, 0)
+                hl = "SAFE ACTION"
+
+            # Override global HUD to bright green if safe action is active and threat is low
+            if has_safe_action and ms <= 20:
+                hc = (0, 255, 0)
+                hl = "SAFE ACTION"
+                ms = 0.0
+
+            hud_x = max(10, w - 225)
+            cv2.rectangle(vis, (hud_x, 10), (w - 10, 95), (18, 18, 18), -1)
+            cv2.rectangle(vis, (hud_x, 10), (w - 10, 95), hc, 2)
+            cv2.putText(vis, "THREAT LEVEL", (hud_x + 5, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+            cv2.putText(vis, hl, (hud_x + 5, 52),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, hc, 2)
-            bf = int(195 * ms/100.0)
-            cv2.rectangle(vis, (w-220,60), (w-25,75), (45,45,45), -1)
-            cv2.rectangle(vis, (w-220,60), (w-220+bf,75), hc, -1)
-            cv2.putText(vis, f"{ms:.0f}%", (w-50,73),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255,255,255), 1)
+            bf = int(195 * ms / 100.0)
+            cv2.rectangle(vis, (hud_x + 5, 60), (w - 25, 75), (45, 45, 45), -1)
+            if bf > 0:
+                cv2.rectangle(vis, (hud_x + 5, 60), (hud_x + 5 + bf, 75), hc, -1)
+            cv2.putText(vis, f"{ms:.0f}%", (w - 50, 73),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1)
 
         return vis

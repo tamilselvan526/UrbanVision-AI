@@ -38,39 +38,51 @@ A high-performance, GPU-accelerated tactical surveillance and forensic intellige
 - **Tesseract OCR Integration**: High-accuracy alphanumeric plate text extraction.
 - **Movement Registry & Trajectory Search**: Search any plate number (e.g. `DL08`, `MH02`) to view where the vehicle went, timestamps, speed, direction, and evidence crops.
 
-### 7. Retro Terminal Web Dashboard
-- Amber phosphor CRT terminal aesthetic (no neon, aged blueprint layout, scanlines, and tactile controls).
-- Navigation tabs: `[F1] Live Feed`, `[F2] Person Watchlist`, `[F3] Plate & Vehicle Search`.
+### 7. Safe Action Recognition & Prototype Presentation Demo
+- **Hands Raised / Waving Classification**: Elevates wrists above shoulders or in upper torso/head region to identify surrender, waving, greeting, and compliance.
+- **Vibrant Green Perimeter Frame**: When safe action is recognized, triggers an 8-pixel bright green outer border `(0, 255, 0)` on the video canvas, top status HUD banner, bottom presentation badge, and resets threat score to `0.0% (CLEAR)`.
+- **Presentation Hotkey & Button**: Live dashboard button `> DEMO SAFE ACTION [G]`, shortcut key <kbd>G</kbd>, and `POST /demo_action` endpoint for instantaneous, reliable demonstrations during academic defense/evaluation.
+
+### 8. Retro Terminal Web Dashboard
+- Amber phosphor CRT terminal aesthetic (aged blueprint layout, scanlines, tactile controls, and high-contrast alert overlays).
+- Navigation tabs: `[F1] Live Feed`, `[F2] Person Watchlist`, `[F3] Plate & Vehicle Search`, `[F4] Street Regulars & Jobs`.
 
 ---
 
 ## 🛠️ Architecture
 
 ```
-lawfix/
+smartcityai/
 ├── engine/
-│   ├── detector.py          # YOLOv8 Person, Weapon & Vehicle Detector
-│   ├── tracker.py           # ByteTrack Multi-Object Motion Tracker
-│   ├── pose_estimator.py    # YOLO-Pose 17-Keypoint & Strike Velocity Engine
-│   ├── threat_analyzer.py   # Spatio-Temporal Combat Reasoning Engine
-│   ├── person_reid.py       # Watchlist Re-ID & Visual Appearance Descriptor
-│   ├── plate_recognizer.py  # License Plate Localization & Tesseract OCR
-│   ├── vehicle_tracker.py   # Vehicle Movement Kinematics & Registry
-│   ├── intelligence_db.py   # SQLite Intelligence & Sightings Database
-│   └── pipeline.py          # Master Orchestrator Chaining All Algorithms
+│   ├── detector.py               # YOLOv8 Person, Weapon & Vehicle Detector
+│   ├── tracker.py                # ByteTrack Multi-Object Motion Tracker
+│   ├── pose_estimator.py         # YOLO-Pose 17-Keypoint & Strike Velocity Engine
+│   ├── threat_analyzer.py        # Spatio-Temporal Combat Reasoning Engine
+│   ├── person_reid.py            # Watchlist Re-ID & Visual Appearance Descriptor
+│   ├── plate_recognizer.py       # License Plate Localization & Tesseract OCR
+│   ├── vehicle_tracker.py        # Vehicle Movement Kinematics & Registry
+│   ├── bike_cargo_analyzer.py    # Two-Wheeler Helmet & Cargo Disambiguation AI
+│   ├── liveness_detector.py      # Micro-Motion Human Liveness & Dummy Detector
+│   ├── street_entity_profiler.py # Routine Profiling (Vendors, Shopkeepers, Commuters)
+│   ├── intelligence_db.py        # SQLite Intelligence & Sightings Database
+│   └── pipeline.py               # Master Orchestrator Chaining All Algorithms
 ├── app/
-│   ├── main.py              # FastAPI Web & WebSocket Server
-│   ├── streamer.py          # Thread-Safe Video Frame Producer
-│   └── schemas.py           # Pydantic Schemas & Alert Serializers
+│   ├── main.py                   # FastAPI Web & WebSocket Server
+│   ├── streamer.py               # Thread-Safe Video Frame Producer
+│   └── schemas.py                # Pydantic Schemas & Alert Serializers
 ├── ui/
-│   ├── index.html           # Retro CRT Surveillance Terminal Interface
-│   ├── style.css            # Amber Phosphor CRT Stylesheet
-│   └── app.js               # WebSocket Streaming, Canvas Rendering & Tabs
+│   ├── index.html                # Retro CRT Surveillance Terminal Interface
+│   ├── style.css                 # Amber Phosphor CRT Stylesheet
+│   └── app.js                    # WebSocket Streaming, Canvas Rendering & Tabs
 ├── tests/
-│   ├── test_pipeline.py     # Main 4-Algorithm Pipeline Verification Tests
-│   └── test_reid_plate.py   # Person Re-ID and ANPR Unit Tests
-├── run_server.py            # Web Dashboard Launcher
-└── run_cli.py               # CLI Video / Webcam Processor
+│   ├── test_pipeline.py          # Main 4-Algorithm Pipeline Verification Tests
+│   ├── test_reid_plate.py        # Person Re-ID and ANPR Unit Tests
+│   ├── test_bike_cargo_analyzer.py # Helmet Compliance & Cargo Tests
+│   ├── test_liveness_detector.py # Mannequin & Liveness Unit Tests
+│   └── test_street_profiler.py   # Street Entity Routine Discovery Tests
+├── run_tests.py                  # Automated Suite Runner (18 Tests)
+├── run_server.py                 # Web Dashboard Launcher
+└── run_cli.py                    # CLI Video / Webcam Processor
 ```
 
 ---
@@ -120,8 +132,15 @@ python run_cli.py
 ### 5. Run Test Suites
 
 ```powershell
+# Run the entire 18-test automated verification suite
+python run_tests.py
+
+# Or run individual test suites
 python tests/test_pipeline.py
 python tests/test_reid_plate.py
+python tests/test_bike_cargo_analyzer.py
+python tests/test_liveness_detector.py
+python tests/test_street_profiler.py
 ```
 
 ---

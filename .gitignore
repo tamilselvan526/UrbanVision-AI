@@ -66,5 +66,9 @@ snapshots/
 .idea/
 *.swp
 *.swo
+*.bak
+*.tmp
+package-lock.json
+.playwright-mcp/
 .DS_Store
 Thumbs.db
